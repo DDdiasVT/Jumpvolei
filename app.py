@@ -22,7 +22,7 @@ with st.sidebar:
 # --- CÉREBRO (MÓDULO DE IA) ---
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
-pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5, model_complexity=1)
+pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5, model_complexity=2)
 
 def calcular_angulo(a, b, c):
     a = np.array(a); b = np.array(b); c = np.array(c)
