@@ -1,17 +1,28 @@
-# --- CÓDIGO V9: PAINEL DE CONTROLE COMPLETO (Vídeo + Relatório) ---
-%%capture
-!pip uninstall -y mediapipe
-!pip install mediapipe==0.10.14 opencv-python-headless
-
+import streamlit as st
 import cv2
 import mediapipe as mp
 import numpy as np
+import tempfile
 import os
-from google.colab import files
 
+# --- CONFIGURAÇÃO DA PÁGINA ---
+st.set_page_config(
+    page_title="Jump Lab AI",
+    page_icon="🚀",
+    layout="centered"
+)
+
+st.title("🚀 Jump Lab AI")
+st.write("Análise biomecânica do Salto Vertical (MVP).")
+
+# --- BARRA LATERAL ---
+with st.sidebar:
+    st.info("Dica: Grave de perfil (lado) e use câmera lenta se puder.")
+
+# --- CÉREBRO (MÓDULO DE IA) ---
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
-pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5, model_complexity=2)
+pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5, model_complexity=1)
 
 def calcular_angulo(a, b, c):
     a = np.array(a); b = np.array(b); c = np.array(c)
@@ -20,22 +31,19 @@ def calcular_angulo(a, b, c):
     if angle > 180.0: angle = 360-angle
     return angle
 
-def analisar_hud_completo(nome_arquivo):
-    if not os.path.exists(nome_arquivo):
-        print(f"ERRO: Arquivo '{nome_arquivo}' não encontrado.")
-        return None
-
-    cap = cv2.VideoCapture(nome_arquivo)
+def processar_video(video_path):
+    cap = cv2.VideoCapture(video_path)
     largura = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     altura = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     if fps == 0 or np.isnan(fps): fps = 30.0
 
-    nome_saida = 'painel_completo.mp4'
-    saida = cv2.VideoWriter(nome_saida, cv2.VideoWriter_fourcc(*'mp4v'), int(fps), (largura, altura))
+    tfile_out = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    nome_saida = tfile_out.name
     
-    print(f"Gerando vídeo com HUD Completo...")
-    
+    # H.264 é o codec ideal para web
+    saida = cv2.VideoWriter(nome_saida, cv2.VideoWriter_fourcc(*'avc1'), int(fps), (largura, altura))
+
     # Variáveis
     chao_y = 0
     min_angulo_joelho = 180 
@@ -43,7 +51,6 @@ def analisar_hud_completo(nome_arquivo):
     frames_no_ar = 0
     estado = "CHAO"
     
-    # Métricas Temporais
     frame_inicio_dip = 0     
     frame_takeoff = 0        
     tempo_contracao = 0.0
@@ -51,91 +58,66 @@ def analisar_hud_completo(nome_arquivo):
     
     lista_y_chao = []
     frame_idx = 0
+    
+    # Barra de progresso
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    barra = st.progress(0)
 
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret: break
         
+        if total_frames > 0:
+            barra.progress(min(frame_idx / total_frames, 1.0))
+
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = pose.process(image)
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         
-        # Cria um Painel Preto na esquerda para os dados
-        cv2.rectangle(image, (0, 0), (300, 300), (0, 0, 0), -1)
-        cv2.addWeighted(image, 0.8, frame, 0.2, 0, image) # Deixa meio transparente
+        # Desenha HUD
+        cv2.rectangle(image, (0, 0), (300, 250), (0, 0, 0), -1)
+        cv2.addWeighted(image, 0.7, frame, 0.3, 0, image)
 
         if results.pose_landmarks:
             lms = results.pose_landmarks.landmark
             
-            # Coordenadas
             hip = [lms[23].x * largura, lms[23].y * altura]
             knee = [lms[25].x * largura, lms[25].y * altura]
             ankle = [lms[27].x * largura, lms[27].y * altura]
-            
             angulo_joelho = calcular_angulo(hip, knee, ankle)
             
-            # Ponta do Pé (31/32)
             pe_y = max(lms[31].y, lms[32].y) * altura
             
-            # --- LÓGICA ---
             if estado == "CHAO":
-                # Calibração
-                if frame_idx < 30:
+                if frame_idx < 20: 
                     lista_y_chao.append(pe_y)
-                    cv2.putText(image, "CALIBRANDO...", (20, 250), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                    cv2.putText(image, "CALIBRANDO...", (20, 220), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
                 else:
                     if chao_y == 0: chao_y = max(lista_y_chao)
                     
-                    # Rastreia o ângulo mínimo (Agachamento máximo)
-                    if angulo_joelho < min_angulo_joelho:
-                        min_angulo_joelho = angulo_joelho
+                    if angulo_joelho < min_angulo_joelho: min_angulo_joelho = angulo_joelho
+                    if angulo_joelho < 170 and frame_inicio_dip == 0: frame_inicio_dip = frame_idx
                     
-                    # Detecta INÍCIO do movimento (Joelhos dobrando)
-                    if angulo_joelho < 170 and frame_inicio_dip == 0:
-                        frame_inicio_dip = frame_idx
-                    
-                    # Detecta SAÍDA
                     if pe_y < (chao_y - altura * 0.03): 
                         estado = "NO AR"
                         frame_takeoff = frame_idx
-                        # Calcula tempo de contração
                         if frame_inicio_dip > 0:
                             tempo_contracao = (frame_takeoff - frame_inicio_dip) / fps
 
             elif estado == "NO AR":
                 frames_no_ar += 1
-                
-                # Rastreia extensão máxima (Explosão)
                 if frames_no_ar < 10: 
                     if angulo_joelho > max_extensao_joelho: max_extensao_joelho = angulo_joelho
                 
-                # Detecta POUSO
                 if pe_y >= (chao_y - altura * 0.01):
                     estado = "POUSOU"
                     tempo_voo = frames_no_ar / fps
                     altura_final_cm = 122.6 * (tempo_voo * tempo_voo)
 
-            # --- HUD (DESENHO NA TELA) ---
-            # 1. Altura
-            cv2.putText(image, "ALTURA:", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1)
-            val_altura = f"{altura_final_cm:.1f} cm" if altura_final_cm > 0 else "--"
-            cv2.putText(image, val_altura, (20, 80), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 255, 0), 2)
-            
-            # 2. Dip (Agachamento)
-            cv2.putText(image, "AGACHAMENTO (Dip):", (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-            val_dip = f"{int(min_angulo_joelho)} graus" if min_angulo_joelho < 179 else "--"
-            cor_dip = (0, 255, 255) if 80 <= min_angulo_joelho <= 110 else (0, 0, 255)
-            cv2.putText(image, val_dip, (20, 145), cv2.FONT_HERSHEY_SIMPLEX, 0.8, cor_dip, 2)
-            
-            # 3. Explosão
-            cv2.putText(image, "EXPLOSAO (Ext):", (20, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-            val_ext = f"{int(max_extensao_joelho)} graus" if max_extensao_joelho > 0 else "--"
-            cor_ext = (0, 255, 0) if max_extensao_joelho > 165 else (0, 0, 255)
-            cv2.putText(image, val_ext, (20, 205), cv2.FONT_HERSHEY_SIMPLEX, 0.8, cor_ext, 2)
-            
-            # 4. Tempo de Contração (Velocidade)
-            if tempo_contracao > 0:
-                cv2.putText(image, f"RITMO: {tempo_contracao:.2f}s", (20, 280), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 200, 0), 2)
+            # Textos no vídeo
+            cv2.putText(image, f"ALTURA: {altura_final_cm:.1f} cm", (20, 60), cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 0), 2)
+            cv2.putText(image, f"DIP: {int(min_angulo_joelho)} graus", (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+            cv2.putText(image, f"RITMO: {tempo_contracao:.2f} s", (20, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 200, 0), 2)
 
             mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
             
@@ -144,18 +126,38 @@ def analisar_hud_completo(nome_arquivo):
         
     cap.release()
     saida.release()
+    barra.progress(100)
     
-    # Relatório TEXTO também (para garantir)
-    print("\n" + "="*40)
-    print("DADOS FINAIS:")
-    print(f"Altura: {altura_final_cm:.1f} cm")
-    print(f"Agachamento: {min_angulo_joelho:.0f} graus")
-    print(f"Explosão: {max_extensao_joelho:.0f} graus")
-    print(f"Tempo de Contração: {tempo_contracao:.2f} s")
-    print("="*40)
-    
-    return nome_saida
+    stats = {
+        "altura": altura_final_cm,
+        "dip": min_angulo_joelho,
+        "extensao": max_extensao_joelho,
+        "tempo": tempo_contracao
+    }
+    return nome_saida, stats
 
-arquivo = analisar_hud_completo('teste.mp4')
-if arquivo:
-    files.download(arquivo)
+# --- INTERFACE ---
+uploaded_file = st.file_uploader("Carregue seu vídeo (MP4)", type=["mp4", "mov"])
+
+if uploaded_file is not None:
+    tfile = tempfile.NamedTemporaryFile(delete=False)
+    tfile.write(uploaded_file.read())
+    
+    st.write("⏳ Processando...")
+    
+    try:
+        video_saida_path, dados = processar_video(tfile.name)
+        st.success("Pronto!")
+        
+        # Exibe o vídeo
+        st.video(video_saida_path)
+        
+        # Métricas
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Altura", f"{dados['altura']:.1f} cm")
+        col2.metric("Dip", f"{int(dados['dip'])}°")
+        col3.metric("Explosão", f"{int(dados['extensao'])}°")
+        col4.metric("Ritmo", f"{dados['tempo']:.2f} s")
+        
+    except Exception as e:
+        st.error(f"Erro ao processar o vídeo: {e}")
