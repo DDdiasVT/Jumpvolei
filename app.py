@@ -5,25 +5,37 @@ import numpy as np
 import tempfile
 import os
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
+# --- 1. CONFIGURAÇÃO VISUAL ---
 st.set_page_config(
-    page_title="Jump Lab AI",
-    page_icon="🚀",
-    layout="centered"
+    page_title="JumpPro Analytics",
+    page_icon="🏆",
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
-st.title("🚀 Jump Lab AI")
-st.write("Análise biomecânica do Salto Vertical (MVP).")
+# Estilo CSS para esconder menus e deixar limpo
+st.markdown("""
+    <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        .stDeployButton {display:none;}
+    </style>
+""", unsafe_allow_html=True)
 
-# --- BARRA LATERAL ---
-with st.sidebar:
-    st.info("Dica: Grave de perfil (lado) e use câmera lenta se puder.")
+# Cabeçalho
+col_a, col_b = st.columns([1, 5])
+with col_a:
+    st.write("# 🚀") 
+with col_b:
+    st.title("JumpPro Analytics")
+    st.caption("Análise Biomecânica de Elite.")
 
-# --- CÉREBRO (MÓDULO DE IA) ---
+# --- 2. CONFIGURAÇÃO DA IA ---
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
+# Confiança 0.7 para evitar tremedeira, Complexity 1 para rodar na nuvem
 pose = mp_pose.Pose(min_detection_confidence=0.7, min_tracking_confidence=0.7, model_complexity=1)
-
 
 def calcular_angulo(a, b, c):
     a = np.array(a); b = np.array(b); c = np.array(c)
@@ -39,11 +51,12 @@ def processar_video(video_path):
     fps = cap.get(cv2.CAP_PROP_FPS)
     if fps == 0 or np.isnan(fps): fps = 30.0
 
+    # Cria arquivo temporário
     tfile_out = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     nome_saida = tfile_out.name
     
-    # H.264 é o codec ideal para web
-    saida = cv2.VideoWriter(nome_saida, cv2.VideoWriter_fourcc(*'avc1'), int(fps), (largura, altura))
+    # CODEC DE SEGURANÇA: 'mp4v' evita o erro de tela cinza na maioria dos navegadores PC
+    saida = cv2.VideoWriter(nome_saida, cv2.VideoWriter_fourcc(*'mp4v'), int(fps), (largura, altura))
 
     # Variáveis
     chao_y = 0
@@ -60,7 +73,6 @@ def processar_video(video_path):
     lista_y_chao = []
     frame_idx = 0
     
-    # Barra de progresso
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     barra = st.progress(0)
 
@@ -68,6 +80,7 @@ def processar_video(video_path):
         ret, frame = cap.read()
         if not ret: break
         
+        # Atualiza barra
         if total_frames > 0:
             barra.progress(min(frame_idx / total_frames, 1.0))
 
@@ -75,13 +88,14 @@ def processar_video(video_path):
         results = pose.process(image)
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         
-        # Desenha HUD
+        # HUD Escuro
         cv2.rectangle(image, (0, 0), (300, 250), (0, 0, 0), -1)
         cv2.addWeighted(image, 0.7, frame, 0.3, 0, image)
 
         if results.pose_landmarks:
             lms = results.pose_landmarks.landmark
             
+            # Coordenadas
             hip = [lms[23].x * largura, lms[23].y * altura]
             knee = [lms[25].x * largura, lms[25].y * altura]
             ankle = [lms[27].x * largura, lms[27].y * altura]
@@ -89,6 +103,7 @@ def processar_video(video_path):
             
             pe_y = max(lms[31].y, lms[32].y) * altura
             
+            # Lógica
             if estado == "CHAO":
                 if frame_idx < 20: 
                     lista_y_chao.append(pe_y)
@@ -115,7 +130,7 @@ def processar_video(video_path):
                     tempo_voo = frames_no_ar / fps
                     altura_final_cm = 122.6 * (tempo_voo * tempo_voo)
 
-            # Textos no vídeo
+            # Escreve Dados no Vídeo
             cv2.putText(image, f"ALTURA: {altura_final_cm:.1f} cm", (20, 60), cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 0), 2)
             cv2.putText(image, f"DIP: {int(min_angulo_joelho)} graus", (20, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
             cv2.putText(image, f"RITMO: {tempo_contracao:.2f} s", (20, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 200, 0), 2)
@@ -137,28 +152,57 @@ def processar_video(video_path):
     }
     return nome_saida, stats
 
-# --- INTERFACE ---
-uploaded_file = st.file_uploader("Carregue seu vídeo (MP4)", type=["mp4", "mov"])
+# --- 3. INTERFACE DE USUÁRIO ---
+uploaded_file = st.file_uploader("Carregue seu vídeo de Salto (MP4)", type=["mp4", "mov"])
 
 if uploaded_file is not None:
+    # Salva arquivo temporário
     tfile = tempfile.NamedTemporaryFile(delete=False)
     tfile.write(uploaded_file.read())
     
-    st.write("⏳ Processando...")
+    st.write("⏳ Analisando biomecânica...")
     
     try:
+        # Processa
         video_saida_path, dados = processar_video(tfile.name)
-        st.success("Pronto!")
         
-        # Exibe o vídeo
+        # --- AQUI ESTAVA O PROBLEMA: EXIBIR O VÍDEO ANTES DE TUDO ---
+        st.success("Análise Completa!")
+        
+        # Exibe o vídeo processado
         st.video(video_saida_path)
         
-        # Métricas
+        # Exibe as Métricas em Cartões
         col1, col2, col3, col4 = st.columns(4)
         col1.metric("Altura", f"{dados['altura']:.1f} cm")
         col2.metric("Dip", f"{int(dados['dip'])}°")
         col3.metric("Explosão", f"{int(dados['extensao'])}°")
         col4.metric("Ritmo", f"{dados['tempo']:.2f} s")
         
+        st.divider()
+        
+        # --- 4. ÁREA DE VENDA (DIAGNÓSTICO) ---
+        st.subheader("📋 Diagnóstico do Treinador")
+        
+        # Lógica Simples de Feedback
+        if dados['dip'] < 75:
+            st.error(f"❌ **Problema Crítico:** Agachamento Excessivo ({int(dados['dip'])}°). Você desce demais e perde potência.")
+        elif dados['dip'] > 110:
+             st.warning(f"⚠️ **Atenção:** Agachamento Curto ({int(dados['dip'])}°). Falta amplitude.")
+        else:
+             st.success(f"✅ **Ótimo:** Profundidade ideal ({int(dados['dip'])}°).")
+             
+        if dados['tempo'] > 0.85:
+            st.error(f"❌ **Lentidão:** Ritmo de {dados['tempo']:.2f}s é muito lento para pliometria.")
+        else:
+            st.success(f"✅ **Velocidade:** Ritmo de {dados['tempo']:.2f}s está bom.")
+
+        st.info("💡 Com base nesses números, a IA identificou que você pode ganhar até **5cm** corrigindo apenas o ritmo.")
+        
+        st.markdown("### 🔓 Desbloquear Plano de Treino")
+        st.write("Receba a planilha exata de exercícios para corrigir esse 'Dip' e acelerar seu salto.")
+        
+        st.link_button("👉 QUERO MEU TREINO (R$ 19,90)", "https://www.mercadopago.com.br", type="primary")
+        
     except Exception as e:
-        st.error(f"Erro ao processar o vídeo: {e}")
+        st.error(f"Erro ao processar: {e}")
