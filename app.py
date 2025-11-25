@@ -1,7 +1,4 @@
-import requests # <-- ADICIONE ESTA LINHA
-# import streamlit as st
-# import cv2
-# ... (outras importações)
+import requests # NOVO: Necessário para enviar dados ao Google Sheets
 import streamlit as st
 import cv2
 import mediapipe as mp
@@ -15,7 +12,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import gc 
 
-# --- 1. CONFIGURAÇÃO ---
+# --- 1. CONFIGURAÇÃO GERAL ---
 st.set_page_config(
     page_title="JumpPro Analytics",
     page_icon="🏆",
@@ -32,7 +29,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. SISTEMA DE EMAIL (Mantido para Boas-vindas) ---
+# --- 2. SISTEMA DE EMAIL ---
 def enviar_email_boas_vindas(nome_cliente, email_cliente):
     try:
         if "email" in st.secrets:
@@ -68,24 +65,31 @@ def enviar_email_boas_vindas(nome_cliente, email_cliente):
         print(f"Erro email: {e}")
         return False
 
-# --- 3. BANCO DE DADOS ---
-ARQUIVO_DB = "base_de_dados.csv"
+# --- 3. BANCO DE DADOS (AGORA É GOOGLE SHEETS) ---
+# A URL e os IDs devem estar corretos para o seu Formulário
+GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScqve9FcZhMQkakXLGfnEiJzyKWAN8cLqaMCiLvRHez9NQYmg/formResponse"
 
-def salvar_lead(nome, telefone, email, altura_user, peso_user):
-    novo_dado = {
-        "Data": [datetime.now().strftime("%d/%m/%Y %H:%M")],
-        "Nome": [nome],
-        "Telefone": [telefone],
-        "Email": [email],
-        "Altura": [altura_user],
-        "Peso": [peso_user]
-    }
-    df_novo = pd.DataFrame(novo_dado)
+def salvar_lead(nome, telefone, email, altura_user): # REMOVEMOS O PESO DA FUNÇÃO
     
-    if not os.path.exists(ARQUIVO_DB):
-        df_novo.to_csv(ARQUIVO_DB, index=False)
-    else:
-        df_novo.to_csv(ARQUIVO_DB, mode='a', header=False, index=False)
+    dados_a_enviar = {
+        # IDs OBRIGATÓRIOS DO SEU FORMULÁRIO (4 CAMPOS)
+        "entry.1427267338": nome,       # Nome Completo
+        "entry.597277093": email,       # E-mail
+        "entry.1793364676": telefone,   # WhatsApp (WPP)
+        "entry.215882622": altura_user, # Altura (m)
+        # O CAMPO PESO FOI EXCLUÍDO AQUI
+    }
+
+    try:
+        response = requests.post(GOOGLE_FORM_URL, data=dados_a_enviar)
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"ERRO DE ENVIO PARA O GOOGLE SHEETS: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"Erro ao enviar via requisição: {e}")
+        return False
 
 # --- MOTOR IA (Otimizado) ---
 mp_pose = mp.solutions.pose
@@ -102,7 +106,6 @@ def calcular_angulo(a, b, c):
 def processar_video(video_path):
     cap = cv2.VideoCapture(video_path)
     
-    # Redimensionamento para evitar crash
     largura_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     altura_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -199,18 +202,19 @@ if not st.session_state['cadastro_ok']:
         col1, col2 = st.columns(2)
         telefone = col1.text_input("WhatsApp (Importante para contato)")
         email = col2.text_input("E-mail")
-        col3, col4 = st.columns(2)
-        altura_user = col3.number_input("Altura (m)", 1.50, 2.30, 1.75)
-        peso_user = col4.number_input("Peso (kg)", 40.0, 150.0, 70.0)
+        
+        # O campo Peso foi removido, só resta a Altura
+        altura_user = st.number_input("Sua Altura (m)", 1.50, 2.30, 1.75) 
         
         submitted = st.form_submit_button("🚀 INICIAR ANÁLISE")
         
         if submitted:
             if nome and email and telefone:
-                salvar_lead(nome, telefone, email, altura_user, peso_user)
-                try:
-                    enviar_email_boas_vindas(nome, email)
-                except: pass
+                # CHAMAR A NOVA FUNÇÃO SALVAR_LEAD (4 ARGUMENTOS)
+                salvar_lead(nome, telefone, email, altura_user) 
+                
+                enviar_email_boas_vindas(nome, email)
+                
                 st.session_state['cadastro_ok'] = True
                 st.session_state['nome_user'] = nome
                 st.rerun()
