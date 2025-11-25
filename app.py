@@ -9,7 +9,7 @@ from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import gc # Importando o "Faxineiro" de memória
+import gc 
 
 # --- 1. CONFIGURAÇÃO ---
 st.set_page_config(
@@ -28,7 +28,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 2. SISTEMA DE EMAIL ---
+# --- 2. SISTEMA DE EMAIL (Mantido para Boas-vindas) ---
 def enviar_email_boas_vindas(nome_cliente, email_cliente):
     try:
         if "email" in st.secrets:
@@ -38,14 +38,14 @@ def enviar_email_boas_vindas(nome_cliente, email_cliente):
             msg = MIMEMultipart()
             msg['From'] = usuario
             msg['To'] = email_cliente
-            msg['Subject'] = f"🚀 Bem-vindo à JumpPro, {nome_cliente}!"
+            msg['Subject'] = f"🚀 Análise Recebida - JumpPro"
 
             corpo_email = f"""
             <html>
               <body>
                 <h2>Olá, {nome_cliente}!</h2>
-                <p>Seu cadastro na <strong>JumpPro Analytics</strong> foi confirmado.</p>
-                <p>Obrigado por testar nossa tecnologia de análise biomecânica.</p>
+                <p>Recebemos seu vídeo na <strong>JumpPro Analytics</strong>.</p>
+                <p>Nossa IA já processou seus dados. Em breve um de nossos especialistas pode entrar em contato para discutir seus resultados.</p>
                 <br>
                 <p><em>Equipe JumpPro</em></p>
               </body>
@@ -83,7 +83,7 @@ def salvar_lead(nome, telefone, email, altura_user, peso_user):
     else:
         df_novo.to_csv(ARQUIVO_DB, mode='a', header=False, index=False)
 
-# --- 4. MOTOR IA OTIMIZADO (ANTI-CRASH) ---
+# --- MOTOR IA (Otimizado) ---
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
 pose = mp_pose.Pose(min_detection_confidence=0.7, min_tracking_confidence=0.7, model_complexity=1)
@@ -98,14 +98,12 @@ def calcular_angulo(a, b, c):
 def processar_video(video_path):
     cap = cv2.VideoCapture(video_path)
     
-    # --- OTIMIZAÇÃO DE MEMÓRIA ---
-    # Pegamos o tamanho original
+    # Redimensionamento para evitar crash
     largura_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     altura_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
     if fps == 0 or np.isnan(fps): fps = 30.0
     
-    # Se o vídeo for muito grande (>640px), vamos reduzir pela metade
     fator_escala = 1.0
     if largura_orig > 640:
         fator_escala = 640 / largura_orig
@@ -116,7 +114,6 @@ def processar_video(video_path):
     tfile_out = tempfile.NamedTemporaryFile(delete=False, suffix='.webm')
     nome_saida = tfile_out.name
     
-    # Codec VP80 (Leve e compatível)
     saida = cv2.VideoWriter(nome_saida, cv2.VideoWriter_fourcc(*'vp80'), int(fps), (largura_nova, altura_nova))
 
     chao_y = 0; min_angulo_joelho = 180; max_extensao_joelho = 0; frames_no_ar = 0; estado = "CHAO"
@@ -128,23 +125,18 @@ def processar_video(video_path):
         ret, frame = cap.read()
         if not ret: break
         
-        # --- REDIMENSIONAR O FRAME (O SEGREDO DO SUCESSO) ---
-        if fator_escala != 1.0:
-            frame = cv2.resize(frame, (largura_nova, altura_nova))
-
+        if fator_escala != 1.0: frame = cv2.resize(frame, (largura_nova, altura_nova))
         if total_frames > 0: barra.progress(min(frame_idx / total_frames, 1.0))
 
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = pose.process(image)
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         
-        # HUD ajustado para o novo tamanho
         cv2.rectangle(image, (0, 0), (int(300*fator_escala), int(250*fator_escala)), (0, 0, 0), -1)
         cv2.addWeighted(image, 0.7, frame, 0.3, 0, image)
 
         if results.pose_landmarks:
             lms = results.pose_landmarks.landmark
-            # Usamos as dimensões NOVAS para calcular
             hip = [lms[23].x * largura_nova, lms[23].y * altura_nova]
             knee = [lms[25].x * largura_nova, lms[25].y * altura_nova]
             ankle = [lms[27].x * largura_nova, lms[27].y * altura_nova]
@@ -170,7 +162,6 @@ def processar_video(video_path):
                     estado = "POUSOU"; tempo_voo = frames_no_ar / fps
                     altura_final_cm = 122.6 * (tempo_voo * tempo_voo)
 
-            # Textos com tamanho proporcional
             font_scale = 0.8 * fator_escala
             cv2.putText(image, f"ALTURA: {altura_final_cm:.1f} cm", (20, int(60*fator_escala)), cv2.FONT_HERSHEY_DUPLEX, font_scale, (0, 255, 0), 2)
             cv2.putText(image, f"DIP: {int(min_angulo_joelho)} graus", (20, int(120*fator_escala)), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), 2)
@@ -180,17 +171,14 @@ def processar_video(video_path):
             
         saida.write(image)
         frame_idx += 1
-        
-        # --- LIMPEZA DE MEMÓRIA MANUAL ---
-        if frame_idx % 30 == 0:
-            gc.collect() # Chama o lixeiro a cada 30 frames
+        if frame_idx % 30 == 0: gc.collect()
         
     cap.release(); saida.release(); barra.progress(100)
     
     stats = {"altura": altura_final_cm, "dip": min_angulo_joelho, "extensao": max_extensao_joelho, "tempo": tempo_contracao}
     return nome_saida, stats
 
-# --- 5. LÓGICA DO APP ---
+# --- 4. LÓGICA DO APP (INTERFACE) ---
 
 if 'cadastro_ok' not in st.session_state:
     st.session_state['cadastro_ok'] = False
@@ -200,31 +188,30 @@ with col_a: st.write("# 🚀")
 with col_b: st.title("JumpPro Analytics")
 
 if not st.session_state['cadastro_ok']:
-    st.info("🔒 Cadastre-se para acessar (Limite de 200MB por vídeo).")
+    st.info("🔒 Cadastre-se para acessar a ferramenta gratuitamente.")
     
     with st.form("form_cadastro"):
         nome = st.text_input("Nome Completo")
         col1, col2 = st.columns(2)
-        telefone = col1.text_input("WhatsApp")
+        telefone = col1.text_input("WhatsApp (Importante para contato)")
         email = col2.text_input("E-mail")
         col3, col4 = st.columns(2)
         altura_user = col3.number_input("Altura (m)", 1.50, 2.30, 1.75)
         peso_user = col4.number_input("Peso (kg)", 40.0, 150.0, 70.0)
         
-        submitted = st.form_submit_button("🚀 ENTRAR")
+        submitted = st.form_submit_button("🚀 INICIAR ANÁLISE")
         
         if submitted:
-            if nome and email:
+            if nome and email and telefone:
                 salvar_lead(nome, telefone, email, altura_user, peso_user)
                 try:
                     enviar_email_boas_vindas(nome, email)
-                    st.toast(f"E-mail enviado!", icon="📧")
                 except: pass
                 st.session_state['cadastro_ok'] = True
                 st.session_state['nome_user'] = nome
                 st.rerun()
             else:
-                st.error("Preencha Nome e E-mail.")
+                st.error("Preencha todos os dados para continuarmos.")
 
 else:
     st.write(f"Atleta: **{st.session_state['nome_user']}**")
@@ -232,14 +219,11 @@ else:
     uploaded_file = st.file_uploader("Vídeo (Max 200MB)", type=["mp4", "mov"])
 
     if uploaded_file is not None:
-        # Verifica tamanho do arquivo (Evita crash antes de processar)
         if uploaded_file.size > 200 * 1024 * 1024:
-            st.error("O vídeo é muito grande! Tente um vídeo menor que 200MB.")
+            st.error("Vídeo muito grande. Tente um menor que 200MB.")
         else:
             tfile = tempfile.NamedTemporaryFile(delete=False)
             tfile.write(uploaded_file.read())
-            
-            # Limpa memória antes de começar
             gc.collect()
             
             st.write("⏳ Otimizando e analisando vídeo...")
@@ -257,19 +241,18 @@ else:
                 
                 st.divider()
                 
-                st.subheader("📋 Diagnóstico")
-                if dados['dip'] < 75: st.error(f"❌ Agachamento Excessivo ({int(dados['dip'])}°).")
+                st.subheader("📋 Diagnóstico Automático")
+                if dados['dip'] < 75: st.error(f"❌ Agachamento Excessivo ({int(dados['dip'])}°). Perda de energia elástica.")
                 elif dados['dip'] > 110: st.warning(f"⚠️ Agachamento Curto ({int(dados['dip'])}°).")
                 else: st.success(f"✅ Profundidade Ótima ({int(dados['dip'])}°).")
-                     
-                st.link_button("👉 QUERO MEU TREINO (R$ 19,90)", "https://www.mercadopago.com.br", type="primary")
                 
-                if st.button("Sair"):
-                    st.session_state['cadastro_ok'] = False
+                st.info("ℹ️ Seus dados foram salvos. Nossa equipe entrará em contato via WhatsApp caso seja identificada uma oportunidade de melhoria no seu treino.")
+                
+                if st.button("Nova Análise"):
                     st.rerun()
                 
             except Exception as e:
-                st.error(f"Erro: {e}")
+                st.error(f"Erro ao processar. Tente outro vídeo ou formato. ({e})")
 
 with st.sidebar:
     st.divider()
