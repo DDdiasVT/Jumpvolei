@@ -1,4 +1,4 @@
-import requests # NOVO: Necessário para enviar dados ao Google Sheets
+import requests 
 import streamlit as st
 import cv2
 import mediapipe as mp
@@ -65,24 +65,30 @@ def enviar_email_boas_vindas(nome_cliente, email_cliente):
         print(f"Erro email: {e}")
         return False
 
-# --- 3. BANCO DE DADOS (AGORA É GOOGLE SHEETS) ---
-# A URL e os IDs devem estar corretos para o seu Formulário
+# --- 3. BANCO DE DADOS (GOOGLE SHEETS) ---
 GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScqve9FcZhMQkakXLGfnEiJzyKWAN8cLqaMCiLvRHez9NQYmg/formResponse"
 
-def salvar_lead(nome, telefone, email, altura_user): # REMOVEMOS O PESO DA FUNÇÃO
+def salvar_lead(dados_contato, dados_metricas): # Recebe Contato + Métricas
     
+    # Mapeamento FINAL com os IDs fornecidos (8 campos)
     dados_a_enviar = {
-        # IDs OBRIGATÓRIOS DO SEU FORMULÁRIO (4 CAMPOS)
-        "entry.1427267338": nome,       # Nome Completo
-        "entry.597277093": email,       # E-mail
-        "entry.1793364676": telefone,   # WhatsApp (WPP)
-        "entry.215882622": altura_user, # Altura (m)
-        # O CAMPO PESO FOI EXCLUÍDO AQUI
+        # DADOS DO USUÁRIO
+        "entry.1427267338": dados_contato['nome'],       
+        "entry.597277093": dados_contato['email'],       
+        "entry.1793364676": dados_contato['telefone'],   
+        "entry.215882622": dados_contato['altura_user'], 
+
+        # DADOS DA ANÁLISE (Métricas)
+        "entry.1994800528": f"{dados_metricas['altura']:.1f}",   # SALTO
+        "entry.1509204305": f"{dados_metricas['dip']:.0f}",      # DIP 
+        "entry.1858263009": f"{dados_metricas['extensao']:.0f}", # EXTENSÃO 
+        "entry.635471438": f"{dados_metricas['tempo']:.2f}",     # TEMPO CONTRACAO
     }
 
     try:
         response = requests.post(GOOGLE_FORM_URL, data=dados_a_enviar)
         if response.status_code == 200:
+            print("Dados enviados com sucesso para o Google Sheets!")
             return True
         else:
             print(f"ERRO DE ENVIO PARA O GOOGLE SHEETS: {response.status_code}")
@@ -91,7 +97,40 @@ def salvar_lead(nome, telefone, email, altura_user): # REMOVEMOS O PESO DA FUNÇ
         print(f"Erro ao enviar via requisição: {e}")
         return False
 
-# --- MOTOR IA (Otimizado) ---
+# --- 4. DIAGNÓSTICO COMPLEXO (NOVO) ---
+def gerar_diagnostico_complexo(dados):
+    dip = dados['dip']
+    extensao = dados['extensao']
+    ritmo = dados['tempo']
+    
+    perfil = ""
+    solucao = ""
+    
+    # 1. ANÁLISE DO DIP (Profundidade)
+    if dip < 75:
+        perfil += f"❌ **Dominância de Força (Deep Squat):** O ângulo de agachamento de **{dip:.0f}º** está excessivamente baixo. Isso aumenta o tempo de contato e 'mata' o efeito mola (SSC)."
+    elif dip > 110:
+        perfil += f"⚠️ **Agachamento Curto:** Com **{dip:.0f}º**, você não está utilizando todo o potencial de alongamento do tendão."
+    else:
+        perfil += f"✅ **Profundidade Ótima:** O agachamento de **{dip:.0f}º** está na faixa ideal (90-100º). Base sólida."
+
+    # 2. ANÁLISE DO RITMO (Velocidade)
+    if ritmo > 0.85:
+        perfil += f"\n\n❌ **Lentidão Crítica:** O Tempo de Contração de **{ritmo:.2f}s** é muito elevado (alvo ideal < 0.5s). Isso reforça o perfil 'Força-Dominante'."
+        solucao = "Seu elo mais fraco é a **Reatividade**. O treino deve focar em força explosiva e diminuir a profundidade do agachamento (Drill work)."
+    else:
+        perfil += f"\n\n✅ **Ritmo Forte:** O Tempo de Contração de **{ritmo:.2f}s** demonstra boa capacidade de conversão de força em velocidade."
+        solucao = "Seu foco deve ser **ganho de força pura** para aumentar o teto da altura."
+    
+    # 3. ANÁLISE DA EXTENSÃO (O 'Finish')
+    if extensao < 165:
+        solucao += "\n\n**Atenção:** Falta de Tripla Extensão. Você não está finalizando o salto com a máxima extensão possível, perdendo potência no momento da decolagem."
+    
+    st.markdown(f"**Análise de Perfil Biomecânico:**\n{perfil}", unsafe_allow_html=True)
+    st.info(f"**Conclusão da IA:** {solucao}")
+
+
+# --- 5. MOTOR IA (Manutenção) ---
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
 pose = mp_pose.Pose(min_detection_confidence=0.7, min_tracking_confidence=0.7, model_complexity=1)
@@ -185,10 +224,12 @@ def processar_video(video_path):
     stats = {"altura": altura_final_cm, "dip": min_angulo_joelho, "extensao": max_extensao_joelho, "tempo": tempo_contracao}
     return nome_saida, stats
 
-# --- 4. LÓGICA DO APP (INTERFACE) ---
+# --- 6. LÓGICA DO APP (INTERFACE) ---
 
 if 'cadastro_ok' not in st.session_state:
     st.session_state['cadastro_ok'] = False
+if 'dados_contato' not in st.session_state:
+    st.session_state['dados_contato'] = {}
 
 col_a, col_b = st.columns([1, 5])
 with col_a: st.write("# 🚀") 
@@ -203,18 +244,24 @@ if not st.session_state['cadastro_ok']:
         telefone = col1.text_input("WhatsApp (Importante para contato)")
         email = col2.text_input("E-mail")
         
-        # O campo Peso foi removido, só resta a Altura
         altura_user = st.number_input("Sua Altura (m)", 1.50, 2.30, 1.75) 
         
         submitted = st.form_submit_button("🚀 INICIAR ANÁLISE")
         
         if submitted:
             if nome and email and telefone:
-                # CHAMAR A NOVA FUNÇÃO SALVAR_LEAD (4 ARGUMENTOS)
-                salvar_lead(nome, telefone, email, altura_user) 
+                # 1. SALVA OS DADOS DE CONTATO NA MEMÓRIA
+                st.session_state['dados_contato'] = {
+                    'nome': nome,
+                    'telefone': telefone,
+                    'email': email,
+                    'altura_user': altura_user
+                }
                 
+                # 2. Envia e-mail de boas-vindas
                 enviar_email_boas_vindas(nome, email)
                 
+                # 3. Continua o fluxo
                 st.session_state['cadastro_ok'] = True
                 st.session_state['nome_user'] = nome
                 st.rerun()
@@ -238,7 +285,13 @@ else:
             
             try:
                 video_saida_path, dados = processar_video(tfile.name)
-                st.success("Análise Completa!")
+                
+                # CHAMA A FUNÇÃO E ENVIA TUDO PARA O GOOGLE SHEETS
+                if salvar_lead(st.session_state['dados_contato'], dados):
+                    st.success("✅ Análise Completa! Dados salvos no Sheets.")
+                else:
+                    st.error("⚠️ Análise Completa, mas falhou ao salvar o lead no Sheets.")
+                
                 st.video(video_saida_path, format="video/webm")
                 
                 col1, col2, col3, col4 = st.columns(4)
@@ -249,12 +302,11 @@ else:
                 
                 st.divider()
                 
-                st.subheader("📋 Diagnóstico Automático")
-                if dados['dip'] < 75: st.error(f"❌ Agachamento Excessivo ({int(dados['dip'])}°). Perda de energia elástica.")
-                elif dados['dip'] > 110: st.warning(f"⚠️ Agachamento Curto ({int(dados['dip'])}°).")
-                else: st.success(f"✅ Profundidade Ótima ({int(dados['dip'])}°).")
+                st.subheader("📋 Diagnóstico de Potência JumpPro")
+                # NOVO DIAGNÓSTICO COMPLEXO
+                gerar_diagnostico_complexo(dados)
                 
-                st.info("ℹ️ Seus dados foram salvos. Nossa equipe entrará em contato via WhatsApp caso seja identificada uma oportunidade de melhoria no seu treino.")
+                st.info("ℹ️ Sua análise foi registrada. Nossa equipe de especialistas entrará em contato via WhatsApp caso seja identificada uma oportunidade de melhoria no seu treino.")
                 
                 if st.button("Nova Análise"):
                     st.rerun()
@@ -262,11 +314,12 @@ else:
             except Exception as e:
                 st.error(f"Erro ao processar. Tente outro vídeo ou formato. ({e})")
 
+# O bloco da barra lateral de Admin (sem funcionalidade de download, pois o DB não existe mais)
 with st.sidebar:
     st.divider()
     st.write("Admin")
+    # A variável ARQUIVO_DB não é mais definida, mas o código de login ainda funciona
     senha = st.text_input("Senha", type="password")
     if senha == "admin123":
-        if os.path.exists(ARQUIVO_DB):
-            with open(ARQUIVO_DB, "rb") as file:
-                st.download_button("📥 Baixar Leads", file, "clientes.csv", "text/csv")
+        st.success("Acesso Admin liberado, mas o banco de dados CSV local foi descontinuado.")
+        st.write("Acompanhe os leads diretamente no Google Sheets.")
