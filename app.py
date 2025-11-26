@@ -35,7 +35,7 @@ st.markdown("""
 # --- CONFIGURAÇÕES FIXAS ---
 # URL do Google Sheets (Seus IDs estão aqui)
 GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScqve9FcZhMQkakXLGfnEiJzyKWAN8cLqaMCiLvRHez9NQYmg/formResponse"
-ARQUIVO_DB = "base_de_dados.csv" # Apenas para download do Admin
+ARQUIVO_DB = "base_de_dados.csv" 
 
 # --- FUNÇÕES DE UTILIDADE E IA ---
 
@@ -82,8 +82,8 @@ def enviar_email_boas_vindas(nome_cliente, email_cliente):
         print(f"Erro email: {e}")
         return False
 
-def salvar_lead(dados_contato, dados_metricas):
-    # Função para salvar no Google Sheets (Usa os 8 campos)
+# --- FUNÇÃO DE SALVAMENTO NO GOOGLE SHEETS ---
+def salvar_lead(dados_contato, dados_metricas, plano_texto): # NOVO: Aceita o texto do plano
     
     dados_a_enviar = {
         # DADOS DO USUÁRIO
@@ -97,6 +97,9 @@ def salvar_lead(dados_contato, dados_metricas):
         "entry.1509204305": f"{dados_metricas['dip']:.0f}",      # DIP 
         "entry.1858263009": f"{dados_metricas['extensao']:.0f}", # EXTENSÃO 
         "entry.635471438": f"{dados_metricas['tempo']:.2f}",     # TEMPO CONTRACAO
+        
+        # O TEXTO COMPLETO DO PLANO (NOVO CAMPO COM ID CONFIRMADO)
+        "entry.1582150062": plano_texto # <-- ESTE É O ID DO SEU CAMPO "PLANO DE TREINO"
     }
 
     try:
@@ -111,7 +114,7 @@ def salvar_lead(dados_contato, dados_metricas):
         return False
 
 def gerar_plano_gemini(dados_contato, dados_metricas):
-    # NOVO: Função para gerar o plano de treino usando a API
+    # Função para gerar o plano de treino
     
     if "gemini" not in st.secrets:
         return "Erro: Chave da API Gemini não configurada."
@@ -157,14 +160,14 @@ def gerar_plano_gemini(dados_contato, dados_metricas):
     except Exception as e:
         return f"Erro inesperado no Gemini: {e}"
 
-# --- FUNÇÃO DE PROCESSAMENTO DE VÍDEO (Mantida) ---
+# --- FUNÇÃO DE PROCESSAMENTO DE VÍDEO ---
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
 pose = mp_pose.Pose(min_detection_confidence=0.7, min_tracking_confidence=0.7, model_complexity=1)
 
 def processar_video(video_path):
-    # ... (A função processar_video permanece inalterada) ...
     cap = cv2.VideoCapture(video_path)
+    
     largura_orig = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     altura_orig = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -306,25 +309,22 @@ else:
             st.write("⏳ Otimizando e analisando vídeo...")
             
             try:
-                # 1. Processa o vídeo e obtém os dados
+                # 1. Processa o vídeo e obtém as métricas
                 video_saida_path, dados_metricas = processar_video(tfile.name)
                 
-                # 2. COMPLETA O DICIONÁRIO DE DADOS (Junta métricas com contato)
-                dados_completos = st.session_state['dados_contato'].copy()
-                dados_completos.update(dados_metricas)
-                
-                # 3. CHAMA O GEMINI (Gera o plano antes de salvar)
+                # 2. CHAMA O GEMINI (Gera o plano antes de salvar)
+                dados_contato_session = st.session_state['dados_contato']
                 with st.spinner("🧠 Gerando Plano de Treino Personalizado com IA..."):
-                    plano_treino = gerar_plano_gemini(st.session_state['dados_contato'], dados_metricas)
+                    plano_treino = gerar_plano_gemini(dados_contato_session, dados_metricas)
                 
-                # 4. SALVA O LEAD COMPLETO NO SHEETS
-                if salvar_lead(st.session_state['dados_contato'], dados_metricas):
-                    st.success("✅ Análise Completa e Dados Registrados no Sheets.")
+                # 3. SALVA O LEAD COMPLETO NO GOOGLE SHEETS
+                if salvar_lead(dados_contato_session, dados_metricas, plano_treino):
+                    st.success("✅ Análise Concluída e Dados Registrados no Sheets.")
                 else:
                     st.error("⚠️ Análise Concluída, mas falhou ao salvar o lead no Sheets.")
 
                 
-                # 5. EXIBIÇÃO DE RESULTADOS
+                # 4. EXIBIÇÃO DE RESULTADOS
                 st.video(video_saida_path, format="video/webm")
                 
                 col1, col2, col3, col4 = st.columns(4)
@@ -349,11 +349,13 @@ else:
                     st.rerun()
                 
             except Exception as e:
-                st.error(f"Erro ao processar. Tente outro vídeo ou formato. ({e})")
+                st.error(f"Erro ao processar: {e}")
 
 with st.sidebar:
     st.divider()
     st.write("Admin")
     senha = st.text_input("Senha", type="password")
     if senha == "admin123":
-        st.error("O download de CSV foi descontinuado. Acesse a lista de leads no Google Sheets.")
+        if os.path.exists(ARQUIVO_DB):
+            with open(ARQUIVO_DB, "rb") as file:
+                st.download_button("📥 Baixar Leads", file, "clientes.csv", "text/csv")
