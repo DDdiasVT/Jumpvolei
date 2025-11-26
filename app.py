@@ -11,7 +11,6 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import gc 
-# Importação da API do Gemini
 from google import genai 
 from google.genai.errors import APIError
 
@@ -33,7 +32,6 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- CONFIGURAÇÕES FIXAS ---
-# URL do Google Sheets (Seus IDs estão aqui)
 GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScqve9FcZhMQkakXLGfnEiJzyKWAN8cLqaMCiLvRHez9NQYmg/formResponse"
 ARQUIVO_DB = "base_de_dados.csv" 
 
@@ -47,7 +45,6 @@ def calcular_angulo(a, b, c):
     return angle
 
 def enviar_email_boas_vindas(nome_cliente, email_cliente):
-    # Função para enviar e-mail (Mantida como estava)
     try:
         if "email" in st.secrets:
             usuario = st.secrets["email"]["usuario"]
@@ -83,23 +80,21 @@ def enviar_email_boas_vindas(nome_cliente, email_cliente):
         return False
 
 # --- FUNÇÃO DE SALVAMENTO NO GOOGLE SHEETS ---
-def salvar_lead(dados_contato, dados_metricas, plano_texto): # NOVO: Aceita o texto do plano
+def salvar_lead(dados_contato, dados_metricas, plano_texto): 
     
     dados_a_enviar = {
-        # DADOS DO USUÁRIO
         "entry.1427267338": dados_contato['nome'],       
         "entry.597277093": dados_contato['email'],       
         "entry.1793364676": dados_contato['telefone'],   
         "entry.215882622": dados_contato['altura_user'], 
 
-        # DADOS DA ANÁLISE (Métricas)
-        "entry.1994800528": f"{dados_metricas['altura']:.1f}",   # SALTO
-        "entry.1509204305": f"{dados_metricas['dip']:.0f}",      # DIP 
-        "entry.1858263009": f"{dados_metricas['extensao']:.0f}", # EXTENSÃO 
-        "entry.635471438": f"{dados_metricas['tempo']:.2f}",     # TEMPO CONTRACAO
+        "entry.1994800528": f"{dados_metricas['altura']:.1f}",   
+        "entry.1509204305": f"{dados_metricas['dip']:.0f}",      
+        "entry.1858263009": f"{dados_metricas['extensao']:.0f}", 
+        "entry.635471438": f"{dados_metricas['tempo']:.2f}",     
         
-        # O TEXTO COMPLETO DO PLANO (NOVO CAMPO COM ID CONFIRMADO)
-        "entry.1582150062": plano_texto # <-- ESTE É O ID DO SEU CAMPO "PLANO DE TREINO"
+        # ID do Plano de Treino Completo (O texto inteiro)
+        "entry.1582150062": plano_texto 
     }
 
     try:
@@ -114,7 +109,6 @@ def salvar_lead(dados_contato, dados_metricas, plano_texto): # NOVO: Aceita o te
         return False
 
 def gerar_plano_gemini(dados_contato, dados_metricas):
-    # Função para gerar o plano de treino
     
     if "gemini" not in st.secrets:
         return "Erro: Chave da API Gemini não configurada."
@@ -124,7 +118,6 @@ def gerar_plano_gemini(dados_contato, dados_metricas):
     try:
         client = genai.Client(api_key=api_key)
         
-        # Monta a string de dados
         dados_atleta_str = (
             f"Nome: {dados_contato['nome']}, "
             f"Altura User: {dados_contato['altura_user']:.2f}m, "
@@ -160,7 +153,7 @@ def gerar_plano_gemini(dados_contato, dados_metricas):
     except Exception as e:
         return f"Erro inesperado no Gemini: {e}"
 
-# --- FUNÇÃO DE PROCESSAMENTO DE VÍDEO ---
+# --- FUNÇÃO DE PROCESSAMENTO DE VÍDEO (e outras funções) ---
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
 pose = mp_pose.Pose(min_detection_confidence=0.7, min_tracking_confidence=0.7, model_complexity=1)
@@ -337,11 +330,35 @@ else:
                 
                 st.subheader("📋 Plano de Ação (JumpPro Coach)")
                 
-                if plano_treino:
-                    st.markdown(plano_treino) 
-                else:
-                    st.warning("Não foi possível gerar o plano de treino neste momento. Tente novamente.")
+                # --- LÓGICA DO PAYWALL (IMPLEMENTAÇÃO) ---
+                separator = "3. PLANO DE TREINO:" 
                 
+                if plano_treino and separator in plano_treino:
+                    free_content, paid_content_start = plano_treino.split(separator, 1)
+                    
+                    # 1. EXIBIR CONTEÚDO GRATUITO (Diagnóstico e Meta)
+                    st.markdown(free_content)
+                    
+                    # 2. BARREIRA DE PAGAMENTO
+                    st.divider()
+                    st.subheader("🔒 Plano Detalhado de 30 Dias (Bloqueado)")
+                    
+                    st.info("O plano detalhado com séries, repetições e o calendário de 30 dias foi gerado e está pronto para ser enviado.")
+                    
+                    # Botão de Compra
+                    st.link_button(
+                        label="👉 ADQUIRIR PLANO COMPLETO (R$ 19,90)", 
+                        url="https://link.mercadopago.com.br/SEU_LINK_AQUI", 
+                        type="primary"
+                    )
+                    st.caption("Ao finalizar a compra, o plano será enviado para o seu e-mail.")
+                    
+                else:
+                    # Fallback de erro se o Gemini não gerou o formato esperado
+                    st.markdown(plano_treino) 
+                    st.warning("Não foi possível formatar o paywall automaticamente. Se for o caso, aproveite o plano completo, mas sua contribuição ajuda a melhorar a IA!")
+                
+                # --- FIM DO PAYWALL ---
                 
                 if st.button("Nova Análise"):
                     st.session_state['cadastro_ok'] = False
@@ -356,6 +373,4 @@ with st.sidebar:
     st.write("Admin")
     senha = st.text_input("Senha", type="password")
     if senha == "admin123":
-        if os.path.exists(ARQUIVO_DB):
-            with open(ARQUIVO_DB, "rb") as file:
-                st.download_button("📥 Baixar Leads", file, "clientes.csv", "text/csv")
+        st.error("O download de CSV foi descontinuado. Acesse a lista de leads no Google Sheets.")
