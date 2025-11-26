@@ -1,6 +1,7 @@
-google-genai
 streamlit
 opencv-python-headless
 mediapipe
 numpy
 pandas
+requests
+google-genai
