@@ -15,7 +15,7 @@ from google import genai
 from google.genai.errors import APIError
 
 # --- 1. CONFIGURAÇÃO GERAL ---
-st.set_page_config( # <-- CORRIGIDO AQUI
+st.set_page_config(
     page_title="JumpPro Analytics",
     page_icon="🏆",
     layout="centered",
@@ -325,7 +325,7 @@ else:
                 st.subheader("🎉 SEUS RESULTADOS ESTÃO PRONTOS!")
                 
                 # Texto de Venda Simples
-                st.markdown("""
+                st.markdown(f"""
                 Nossa IA detectou um **potencial de 8 a 10 cm** de aumento na sua impulsão vertical em apenas um mês!
                 """)
                 
