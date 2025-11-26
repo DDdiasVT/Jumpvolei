@@ -15,7 +15,7 @@ from google import genai
 from google.genai.errors import APIError
 
 # --- 1. CONFIGURAÇÃO GERAL ---
-st.set_page_config(
+st.set_page_page_config(
     page_title="JumpPro Analytics",
     page_icon="🏆",
     layout="centered",
@@ -93,7 +93,7 @@ def salvar_lead(dados_contato, dados_metricas, plano_texto):
         "entry.1858263009": f"{dados_metricas['extensao']:.0f}", 
         "entry.635471438": f"{dados_metricas['tempo']:.2f}",     
         
-        # ID do Plano de Treino Completo (O texto inteiro)
+        # O ID do Plano de Treino Completo
         "entry.1582150062": plano_texto 
     }
 
@@ -330,34 +330,43 @@ else:
                 
                 st.subheader("📋 Plano de Ação (JumpPro Coach)")
                 
-                # --- LÓGICA DO PAYWALL (IMPLEMENTAÇÃO) ---
-                separator = "3. PLANO DE TREINO:" 
+                # --- LÓGICA DO PAYWALL (CORREÇÃO FINAL DE EXIBIÇÃO) ---
+                # A chave de separação é o ponto de início do conteúdo pago.
+                separator_key = "3. PLANO DE TREINO:" 
                 
-                if plano_treino and separator in plano_treino:
-                    free_content, paid_content_start = plano_treino.split(separator, 1)
+                if plano_treino and separator_key in plano_treino:
+                    # Encontra o índice exato da chave de corte
+                    split_index = plano_treino.find(separator_key)
                     
-                    # 1. EXIBIR CONTEÚDO GRATUITO (Diagnóstico e Meta)
-                    st.markdown(free_content)
-                    
-                    # 2. BARREIRA DE PAGAMENTO
-                    st.divider()
-                    st.subheader("🔒 Plano Detalhado de 30 Dias (Bloqueado)")
-                    
-                    st.info("O plano detalhado com séries, repetições e o calendário de 30 dias foi gerado e está pronto para ser enviado.")
-                    
-                    # Botão de Compra
-                    st.link_button(
-                        label="👉 ADQUIRIR PLANO COMPLETO (R$ 19,90)", 
-                        url="https://buy.stripe.com/test_14AcN6c9y1aoaaDcKndAk00", 
-                        type="primary"
-                    )
-                    st.caption("Ao finalizar a compra, o plano será enviado para o seu e-mail.")
-                    
+                    if split_index != -1:
+                        # Tudo antes da chave é GRATUITO (Diagnóstico e Meta)
+                        free_content = plano_treino[:split_index]
+                        
+                        # 1. EXIBIR CONTEÚDO GRATUITO
+                        st.markdown(free_content)
+                        
+                        # 2. BARREIRA DE PAGAMENTO
+                        st.divider()
+                        st.subheader("🔒 Plano Detalhado de 30 Dias (Bloqueado)")
+                        
+                        st.info("O plano detalhado com séries, repetições e o calendário de 30 dias foi gerado e está pronto para ser enviado.")
+                        
+                        # Botão de Compra
+                        st.link_button(
+                            label="👉 ADQUIRIR PLANO COMPLETO (R$ 19,90)", 
+                            url="https://buy.stripe.com/test_14AcN6c9y1aoaaDcKndAk00", 
+                            type="primary"
+                        )
+                        st.caption("Ao finalizar a compra, o plano será enviado para o seu e-mail.")
+                        
+                    else:
+                        # Fallback se o find falhar (o que não deve acontecer se 'in' for verdadeiro)
+                        st.warning("⚠️ Ocorreu um erro ao localizar o ponto de quebra. O paywall falhou.")
+
                 else:
-                    # Fallback de erro se o Gemini não gerou o formato esperado
-                    st.markdown(plano_treino) 
-                    st.warning("Não foi possível formatar o paywall automaticamente. Se for o caso, aproveite o plano completo, mas sua contribuição ajuda a melhorar a IA!")
-                
+                    # Fallback de erro mais limpo (Se o Gemini não gerou o formato esperado)
+                    st.warning("⚠️ Falha de comunicação com a IA. Tente novamente ou o suporte entrará em contacto.")
+                    
                 # --- FIM DO PAYWALL ---
                 
                 if st.button("Nova Análise"):
