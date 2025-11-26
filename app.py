@@ -11,11 +11,10 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import gc 
-# Importação da API do Gemini
 from google import genai 
 from google.genai.errors import APIError
 
-# --- 1. CONFIGURAÇÃO GERAL E VARIÁVEIS FIXAS ---
+# --- 1. CONFIGURAÇÃO GERAL ---
 st.set_page_config(
     page_title="JumpPro Analytics",
     page_icon="🏆",
@@ -32,11 +31,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# URL do Google Sheets (SUA URL FINAL COM OS IDS CONFIRMADOS)
+# --- CONFIGURAÇÕES FIXAS ---
 GOOGLE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScqve9FcZhMQkakXLGfnEiJzyKWAN8cLqaMCiLvRHez9NQYmg/formResponse"
 ARQUIVO_DB = "base_de_dados.csv" 
 
-# --- 2. FUNÇÕES DE SERVIÇO (EMAIL, SAVE, IA) ---
+# --- FUNÇÕES DE UTILIDADE E IA ---
 
 def calcular_angulo(a, b, c):
     a = np.array(a); b = np.array(b); c = np.array(c)
@@ -80,21 +79,22 @@ def enviar_email_boas_vindas(nome_cliente, email_cliente):
         print(f"Erro email: {e}")
         return False
 
-def salvar_lead(dados_contato, dados_metricas, plano_texto):
+# --- FUNÇÃO DE SALVAMENTO NO GOOGLE SHEETS ---
+def salvar_lead(dados_contato, dados_metricas, plano_texto): 
     
     dados_a_enviar = {
-        # DADOS DO USUÁRIO (4 CAMPOS)
         "entry.1427267338": dados_contato['nome'],       
         "entry.597277093": dados_contato['email'],       
         "entry.1793364676": dados_contato['telefone'],   
         "entry.215882622": dados_contato['altura_user'], 
 
-        # DADOS DA ANÁLISE (5 CAMPOS)
-        "entry.1994800528": f"{dados_metricas['altura']:.1f}",   # SALTO
-        "entry.1509204305": f"{dados_metricas['dip']:.0f}",      # DIP 
-        "entry.1858263009": f"{dados_metricas['extensao']:.0f}", # EXTENSÃO 
-        "entry.635471438": f"{dados_metricas['tempo']:.2f}",     # TEMPO CONTRACAO
-        "entry.1582150062": plano_texto                          # PLANO COMPLETO (Texto)
+        "entry.1994800528": f"{dados_metricas['altura']:.1f}",   
+        "entry.1509204305": f"{dados_metricas['dip']:.0f}",      
+        "entry.1858263009": f"{dados_metricas['extensao']:.0f}", 
+        "entry.635471438": f"{dados_metricas['tempo']:.2f}",     
+        
+        # ID do Plano de Treino Completo (O texto inteiro)
+        "entry.1582150062": plano_texto 
     }
 
     try:
@@ -153,7 +153,7 @@ def gerar_plano_gemini(dados_contato, dados_metricas):
     except Exception as e:
         return f"Erro inesperado no Gemini: {e}"
 
-# --- FUNÇÃO DE PROCESSAMENTO DE VÍDEO ---
+# --- FUNÇÃO DE PROCESSAMENTO DE VÍDEO (e outras funções) ---
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
 pose = mp_pose.Pose(min_detection_confidence=0.7, min_tracking_confidence=0.7, model_complexity=1)
@@ -198,7 +198,7 @@ def processar_video(video_path):
         cv2.addWeighted(image, 0.7, frame, 0.3, 0, image)
 
         if results.pose_landmarks:
-            lms = results.pose.landmarks.landmark
+            lms = results.pose_landmarks.landmark
             hip = [lms[23].x * largura_nova, lms[23].y * altura_nova]
             knee = [lms[25].x * largura_nova, lms[25].y * altura_nova]
             ankle = [lms[27].x * largura_nova, lms[27].y * altura_nova]
@@ -348,7 +348,7 @@ else:
                     # Botão de Compra
                     st.link_button(
                         label="👉 ADQUIRIR PLANO COMPLETO (R$ 19,90)", 
-                        url="https://link.mercadopago.com.br/SEU_LINK_AQUI", 
+                        url="https://buy.stripe.com/test_14AcN6c9y1aoaaDcKndAk00", 
                         type="primary"
                     )
                     st.caption("Ao finalizar a compra, o plano será enviado para o seu e-mail.")
@@ -357,7 +357,7 @@ else:
                     # Fallback de erro se o Gemini não gerou o formato esperado
                     st.markdown(plano_treino) 
                     st.warning("Não foi possível formatar o paywall automaticamente. Se for o caso, aproveite o plano completo, mas sua contribuição ajuda a melhorar a IA!")
-                    
+                
                 # --- FIM DO PAYWALL ---
                 
                 if st.button("Nova Análise"):
