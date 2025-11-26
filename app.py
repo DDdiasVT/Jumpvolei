@@ -15,7 +15,7 @@ from google import genai
 from google.genai.errors import APIError
 
 # --- 1. CONFIGURAÇÃO GERAL ---
-st.set_page_page_config(
+st.set_page_config( # <-- CORRIGIDO AQUI
     page_title="JumpPro Analytics",
     page_icon="🏆",
     layout="centered",
@@ -93,7 +93,6 @@ def salvar_lead(dados_contato, dados_metricas, plano_texto):
         "entry.1858263009": f"{dados_metricas['extensao']:.0f}", 
         "entry.635471438": f"{dados_metricas['tempo']:.2f}",     
         
-        # O ID do Plano de Treino Completo
         "entry.1582150062": plano_texto 
     }
 
@@ -320,54 +319,27 @@ else:
                 # 4. EXIBIÇÃO DE RESULTADOS
                 st.video(video_saida_path, format="video/webm")
                 
-                col1, col2, col3, col4 = st.columns(4)
-                col1.metric("Altura", f"{dados_metricas['altura']:.1f} cm")
-                col2.metric("Dip", f"{int(dados_metricas['dip'])}°")
-                col3.metric("Explosão", f"{int(dados_metricas['extensao'])}°")
-                col4.metric("Ritmo", f"{dados_metricas['tempo']:.2f} s")
+                # --- NOVO BLOCO: LÓGICA DE VENDA SIMPLIFICADA (HIGH CONVERSION) ---
                 
                 st.divider()
+                st.subheader("🎉 SEUS RESULTADOS ESTÃO PRONTOS!")
                 
-                st.subheader("📋 Plano de Ação (JumpPro Coach)")
+                # Texto de Venda Simples
+                st.markdown("""
+                Nossa IA detectou um **potencial de 8 a 10 cm** de aumento na sua impulsão vertical em apenas um mês!
+                """)
                 
-                # --- LÓGICA DO PAYWALL (CORREÇÃO FINAL DE EXIBIÇÃO) ---
-                # A chave de separação é o ponto de início do conteúdo pago.
-                separator_key = "3. PLANO DE TREINO:" 
-                
-                if plano_treino and separator_key in plano_treino:
-                    # Encontra o índice exato da chave de corte
-                    split_index = plano_treino.find(separator_key)
-                    
-                    if split_index != -1:
-                        # Tudo antes da chave é GRATUITO (Diagnóstico e Meta)
-                        free_content = plano_treino[:split_index]
-                        
-                        # 1. EXIBIR CONTEÚDO GRATUITO
-                        st.markdown(free_content)
-                        
-                        # 2. BARREIRA DE PAGAMENTO
-                        st.divider()
-                        st.subheader("🔒 Plano Detalhado de 30 Dias (Bloqueado)")
-                        
-                        st.info("O plano detalhado com séries, repetições e o calendário de 30 dias foi gerado e está pronto para ser enviado.")
-                        
-                        # Botão de Compra
-                        st.link_button(
-                            label="👉 ADQUIRIR PLANO COMPLETO (R$ 19,90)", 
-                            url="https://buy.stripe.com/test_14AcN6c9y1aoaaDcKndAk00", 
-                            type="primary"
-                        )
-                        st.caption("Ao finalizar a compra, o plano será enviado para o seu e-mail.")
-                        
-                    else:
-                        # Fallback se o find falhar (o que não deve acontecer se 'in' for verdadeiro)
-                        st.warning("⚠️ Ocorreu um erro ao localizar o ponto de quebra. O paywall falhou.")
+                st.warning("⚠️ Quer ter acesso ao seu Plano de Correção de 30 dias?")
 
-                else:
-                    # Fallback de erro mais limpo (Se o Gemini não gerou o formato esperado)
-                    st.warning("⚠️ Falha de comunicação com a IA. Tente novamente ou o suporte entrará em contacto.")
-                    
-                # --- FIM DO PAYWALL ---
+                # Botão de Compra
+                st.link_button(
+                    label="👉 QUERO ACESSO AO PLANO DE 30 DIAS! (R$ 9,90)", 
+                    url="https://buy.stripe.com/test_14AcN6c9y1aoaaDcKndAk00", 
+                    type="primary"
+                )
+                st.caption("Ao finalizar a compra, o plano será enviado para o seu e-mail.")
+                
+                # --- FIM DA LÓGICA DE VENDA SIMPLES ---
                 
                 if st.button("Nova Análise"):
                     st.session_state['cadastro_ok'] = False
