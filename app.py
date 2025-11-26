@@ -348,7 +348,7 @@ else:
                     # Botão de Compra
                     st.link_button(
                         label="👉 ADQUIRIR PLANO COMPLETO (R$ 19,90)", 
-                        url="https://link.mercadopago.com.br/SEU_LINK_AQUI", 
+                        url="https://buy.stripe.com/test_14AcN6c9y1aoaaDcKndAk00", 
                         type="primary"
                     )
                     st.caption("Ao finalizar a compra, o plano será enviado para o seu e-mail.")
