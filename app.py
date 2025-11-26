@@ -93,7 +93,6 @@ def salvar_lead(dados_contato, dados_metricas, plano_texto):
         "entry.1858263009": f"{dados_metricas['extensao']:.0f}", 
         "entry.635471438": f"{dados_metricas['tempo']:.2f}",     
         
-        # ID do Plano de Treino Completo (O texto inteiro)
         "entry.1582150062": plano_texto 
     }
 
@@ -330,7 +329,7 @@ else:
                 
                 st.subheader("📋 Plano de Ação (JumpPro Coach)")
                 
-                # --- LÓGICA DO PAYWALL (IMPLEMENTAÇÃO) ---
+                # --- LÓGICA DO PAYWALL (CORREÇÃO FINAL DE EXIBIÇÃO) ---
                 separator = "3. PLANO DE TREINO:" 
                 
                 if plano_treino and separator in plano_treino:
@@ -354,10 +353,9 @@ else:
                     st.caption("Ao finalizar a compra, o plano será enviado para o seu e-mail.")
                     
                 else:
-                    # Fallback de erro se o Gemini não gerou o formato esperado
-                    st.markdown(plano_treino) 
-                    st.warning("Não foi possível formatar o paywall automaticamente. Se for o caso, aproveite o plano completo, mas sua contribuição ajuda a melhorar a IA!")
-                
+                    # Fallback de erro mais limpo
+                    st.warning("⚠️ Não foi possível gerar o Plano Detalhado. Ocorreu um erro na IA.")
+                    
                 # --- FIM DO PAYWALL ---
                 
                 if st.button("Nova Análise"):
@@ -367,10 +365,3 @@ else:
                 
             except Exception as e:
                 st.error(f"Erro ao processar: {e}")
-
-with st.sidebar:
-    st.divider()
-    st.write("Admin")
-    senha = st.text_input("Senha", type="password")
-    if senha == "admin123":
-        st.error("O download de CSV foi descontinuado. Acesse a lista de leads no Google Sheets.")
