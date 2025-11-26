@@ -197,3 +197,163 @@ def processar_video(video_path):
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         results = pose.process(image)
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        
+        cv2.rectangle(image, (0, 0), (int(300*fator_escala), int(250*fator_escala)), (0, 0, 0), -1)
+        cv2.addWeighted(image, 0.7, frame, 0.3, 0, image)
+
+        if results.pose_landmarks:
+            lms = results.pose_landmarks.landmark
+            hip = [lms[23].x * largura_nova, lms[23].y * altura_nova]
+            knee = [lms[25].x * largura_nova, lms[25].y * altura_nova]
+            ankle = [lms[27].x * largura_nova, lms[27].y * altura_nova]
+            angulo_joelho = calcular_angulo(hip, knee, ankle)
+            pe_y = max(lms[31].y, lms[32].y) * altura_nova
+            
+            if estado == "CHAO":
+                if frame_idx < 20: 
+                    lista_y_chao.append(pe_y)
+                else:
+                    if chao_y == 0: chao_y = max(lista_y_chao)
+                    if angulo_joelho < min_angulo_joelho: min_angulo_joelho = angulo_joelho
+                    if angulo_joelho < 170 and frame_inicio_dip == 0: frame_inicio_dip = frame_idx
+                    if pe_y < (chao_y - altura_nova * 0.03): 
+                        estado = "NO AR"; frame_takeoff = frame_idx
+                        if frame_inicio_dip > 0: tempo_contracao = (frame_takeoff - frame_inicio_dip) / fps
+
+            elif estado == "NO AR":
+                frames_no_ar += 1
+                if frames_no_ar < 10: 
+                    if angulo_joelho > max_extensao_joelho: max_extensao_joelho = angulo_joelho
+                if pe_y >= (chao_y - altura_nova * 0.01):
+                    estado = "POUSOU"; tempo_voo = frames_no_ar / fps
+                    altura_final_cm = 122.6 * (tempo_voo * tempo_voo)
+
+            font_scale = 0.8 * fator_escala
+            cv2.putText(image, f"ALTURA: {altura_final_cm:.1f} cm", (20, int(60*fator_escala)), cv2.FONT_HERSHEY_DUPLEX, font_scale, (0, 255, 0), 2)
+            cv2.putText(image, f"DIP: {int(min_angulo_joelho)} graus", (20, int(120*fator_escala)), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 255), 2)
+            cv2.putText(image, f"RITMO: {tempo_contracao:.2f} s", (20, int(180*fator_escala)), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 200, 0), 2)
+            
+            mp_drawing.draw_landmarks(image, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            
+        saida.write(image)
+        frame_idx += 1
+        if frame_idx % 30 == 0: gc.collect()
+        
+    cap.release(); saida.release(); barra.progress(100)
+    
+    stats = {"altura": altura_final_cm, "dip": min_angulo_joelho, "extensao": max_extensao_joelho, "tempo": tempo_contracao}
+    return nome_saida, stats
+
+
+# --- 6. LÓGICA DO APP (INTERFACE) ---
+
+if 'cadastro_ok' not in st.session_state:
+    st.session_state['cadastro_ok'] = False
+if 'dados_contato' not in st.session_state:
+    st.session_state['dados_contato'] = {}
+
+
+col_a, col_b = st.columns([1, 5])
+with col_a: st.write("# 🚀") 
+with col_b: st.title("JumpPro Analytics")
+
+if not st.session_state['cadastro_ok']:
+    st.info("🔒 Cadastre-se para acessar a ferramenta gratuitamente.")
+    
+    with st.form("form_cadastro"):
+        nome = st.text_input("Nome Completo")
+        col1, col2 = st.columns(2)
+        telefone = col1.text_input("WhatsApp (Importante para contato)")
+        email = col2.text_input("E-mail")
+        
+        altura_user = st.number_input("Sua Altura (m)", 1.50, 2.30, 1.75) 
+        
+        submitted = st.form_submit_button("🚀 INICIAR ANÁLISE")
+        
+        if submitted:
+            if nome and email and telefone:
+                # 1. SALVA OS DADOS DE CONTATO NA MEMÓRIA
+                st.session_state['dados_contato'] = {
+                    'nome': nome,
+                    'telefone': telefone,
+                    'email': email,
+                    'altura_user': altura_user
+                }
+                
+                # 2. Envia e-mail de boas-vindas
+                enviar_email_boas_vindas(nome, email)
+                
+                # 3. Continua o fluxo
+                st.session_state['cadastro_ok'] = True
+                st.session_state['nome_user'] = nome
+                st.rerun()
+            else:
+                st.error("Preencha todos os dados para continuarmos.")
+
+else:
+    st.write(f"Atleta: **{st.session_state['nome_user']}**")
+    
+    uploaded_file = st.file_uploader("Vídeo (Max 200MB)", type=["mp4", "mov"])
+
+    if uploaded_file is not None:
+        if uploaded_file.size > 200 * 1024 * 1024:
+            st.error("Vídeo muito grande. Tente um menor que 200MB.")
+        else:
+            tfile = tempfile.NamedTemporaryFile(delete=False)
+            tfile.write(uploaded_file.read())
+            gc.collect()
+            
+            st.write("⏳ Otimizando e analisando vídeo...")
+            
+            try:
+                # 1. Processa o vídeo e obtém os dados
+                video_saida_path, dados_metricas = processar_video(tfile.name)
+                
+                # 2. COMPLETA O DICIONÁRIO DE DADOS (Junta métricas com contato)
+                dados_completos = st.session_state['dados_contato'].copy()
+                dados_completos.update(dados_metricas)
+                
+                # 3. CHAMA O GEMINI (Gera o plano antes de salvar)
+                with st.spinner("🧠 Gerando Plano de Treino Personalizado com IA..."):
+                    plano_treino = gerar_plano_gemini(st.session_state['dados_contato'], dados_metricas)
+                
+                # 4. SALVA O LEAD COMPLETO NO SHEETS
+                if salvar_lead(st.session_state['dados_contato'], dados_metricas):
+                    st.success("✅ Análise Completa e Dados Registrados no Sheets.")
+                else:
+                    st.error("⚠️ Análise Concluída, mas falhou ao salvar o lead no Sheets.")
+
+                
+                # 5. EXIBIÇÃO DE RESULTADOS
+                st.video(video_saida_path, format="video/webm")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                col1.metric("Altura", f"{dados_metricas['altura']:.1f} cm")
+                col2.metric("Dip", f"{int(dados_metricas['dip'])}°")
+                col3.metric("Explosão", f"{int(dados_metricas['extensao'])}°")
+                col4.metric("Ritmo", f"{dados_metricas['tempo']:.2f} s")
+                
+                st.divider()
+                
+                st.subheader("📋 Plano de Ação (JumpPro Coach)")
+                
+                if plano_treino:
+                    st.markdown(plano_treino) 
+                else:
+                    st.warning("Não foi possível gerar o plano de treino neste momento. Tente novamente.")
+                
+                
+                if st.button("Nova Análise"):
+                    st.session_state['cadastro_ok'] = False
+                    st.session_state['dados_contato'] = {}
+                    st.rerun()
+                
+            except Exception as e:
+                st.error(f"Erro ao processar. Tente outro vídeo ou formato. ({e})")
+
+with st.sidebar:
+    st.divider()
+    st.write("Admin")
+    senha = st.text_input("Senha", type="password")
+    if senha == "admin123":
+        st.error("O download de CSV foi descontinuado. Acesse a lista de leads no Google Sheets.")
